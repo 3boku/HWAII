@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/joho/godotenv"
 	"google.golang.org/api/option"
 	"log"
 	"net/http"
@@ -11,24 +10,20 @@ import (
 	"github.com/google/generative-ai-go/genai"
 )
 
-func ChatWithNino(text string) genai.Part {
-	// .env 파일 로드
-	if err := godotenv.Load(); err != nil {
-		log.Fatalf("Error loading .env file")
-	}
+type GeminiChatSession struct {
+	ChatSession *genai.ChatSession
+}
 
-	// API 키 가져오기
+func NewGeminiClient() *GeminiChatSession {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	ctx := context.Background()
 
-	// 클라이언트 생성
 	var err error
 	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// 모델 설정
 	instructions := os.Getenv("GEMINI_INSTRUCTIONS")
 	model := client.GenerativeModel("gemini-2.0-flash")
 	model.SystemInstruction = &genai.Content{
@@ -53,7 +48,6 @@ func ChatWithNino(text string) genai.Part {
 		},
 	}
 
-	// 스크립트 파일 로드
 	scriptData, err := os.ReadFile("script.txt")
 	if err != nil {
 		log.Fatal(err)
@@ -69,7 +63,6 @@ func ChatWithNino(text string) genai.Part {
 
 	cs := model.StartChat()
 
-	// 사전에 로드된 데이터로 히스토리 설정
 	cs.History = []*genai.Content{
 		{
 			Parts: []genai.Part{
@@ -88,15 +81,18 @@ func ChatWithNino(text string) genai.Part {
 		},
 	}
 
-	resp, err := cs.SendMessage(ctx, genai.Text(text))
+	session := &GeminiChatSession{
+		ChatSession: cs,
+	}
+	return session
+}
+
+func (cs *GeminiChatSession) ChatWithNino(ctx context.Context, text string) genai.Part {
+	resp, err := cs.ChatSession.SendMessage(ctx, genai.Text(text))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return PrintModelResp(resp)
-}
-
-func PrintModelResp(resp *genai.GenerateContentResponse) genai.Part {
 	var content genai.Part
 	for _, cand := range resp.Candidates {
 		if cand.Content != nil {
@@ -105,5 +101,6 @@ func PrintModelResp(resp *genai.GenerateContentResponse) genai.Part {
 			}
 		}
 	}
+
 	return content
 }
