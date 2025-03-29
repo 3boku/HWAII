@@ -2,33 +2,19 @@ package main
 
 import (
 	"context"
+	"github.com/joho/godotenv"
+	"google.golang.org/api/option"
 	"log"
 	"net/http"
 	"os"
-	"sync"
 
 	"github.com/google/generative-ai-go/genai"
-	"github.com/joho/godotenv"
-	"google.golang.org/api/option"
 )
 
-// 전역 변수로 클라이언트와 모델 선언
-var (
-	client         *genai.Client
-	model          *genai.GenerativeModel
-	scriptData     []byte
-	scriptMimeType string
-	wikiData       []byte
-	wikiMimeType   string
-	once           sync.Once
-	initErr        error
-)
-
-// 초기화 함수 추가
-func initResources() error {
+func ChatWithNino(text string) genai.Part {
 	// .env 파일 로드
 	if err := godotenv.Load(); err != nil {
-		return err
+		log.Fatalf("Error loading .env file")
 	}
 
 	// API 키 가져오기
@@ -37,14 +23,14 @@ func initResources() error {
 
 	// 클라이언트 생성
 	var err error
-	client, err = genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 
 	// 모델 설정
 	instructions := os.Getenv("GEMINI_INSTRUCTIONS")
-	model = client.GenerativeModel("gemini-2.0-flash")
+	model := client.GenerativeModel("gemini-2.0-flash")
 	model.SystemInstruction = &genai.Content{
 		Parts: []genai.Part{genai.Text(instructions)},
 	}
@@ -68,33 +54,19 @@ func initResources() error {
 	}
 
 	// 스크립트 파일 로드
-	scriptData, err = os.ReadFile("script.txt")
+	scriptData, err := os.ReadFile("script.txt")
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-	scriptMimeType = http.DetectContentType(scriptData)
+	scriptMimeType := http.DetectContentType(scriptData)
 
 	// 위키 파일 로드
-	wikiData, err = os.ReadFile("nino_wiki.pdf")
+	wikiData, err := os.ReadFile("nino_wiki.pdf")
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-	wikiMimeType = http.DetectContentType(wikiData)
+	wikiMimeType := http.DetectContentType(wikiData)
 
-	return nil
-}
-
-func ChatWithNino(text string) genai.Part {
-	// 한 번만 초기화
-	once.Do(func() {
-		initErr = initResources()
-	})
-
-	if initErr != nil {
-		log.Fatal(initErr)
-	}
-
-	ctx := context.Background()
 	cs := model.StartChat()
 
 	// 사전에 로드된 데이터로 히스토리 설정
@@ -134,11 +106,4 @@ func PrintModelResp(resp *genai.GenerateContentResponse) genai.Part {
 		}
 	}
 	return content
-}
-
-// 프로그램 종료 시 클라이언트 닫기 위한 함수
-func CloseClient() {
-	if client != nil {
-		client.Close()
-	}
 }
