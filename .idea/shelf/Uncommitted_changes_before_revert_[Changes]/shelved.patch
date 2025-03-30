@@ -1,0 +1,242 @@
+Index: chatbot/gemini.go
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package main\n\nimport (\n\t\"context\"\n\t\"log\"\n\t\"net/http\"\n\t\"os\"\n\n\t\"github.com/google/generative-ai-go/genai\"\n\t\"google.golang.org/api/option\"\n)\n\ntype GeminiChatSession struct {\n\tChatSession *genai.ChatSession\n}\n\nvar ChatHistory []*genai.Content\n\nfunc NewGeminiClient() *GeminiChatSession {\n\tapiKey := os.Getenv(\"GEMINI_API_KEY\")\n\tctx := context.Background()\n\n\tvar err error\n\tclient, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\n\tinstructions := os.Getenv(\"GEMINI_INSTRUCTIONS\")\n\tmodel := client.GenerativeModel(\"gemini-2.0-flash\")\n\tmodel.SystemInstruction = &genai.Content{\n\t\tParts: []genai.Part{genai.Text(instructions)},\n\t}\n\tmodel.SafetySettings = []*genai.SafetySetting{\n\t\t{\n\t\t\tCategory:  genai.HarmCategoryHarassment,\n\t\t\tThreshold: genai.HarmBlockNone,\n\t\t},\n\t\t{\n\t\t\tCategory:  genai.HarmCategoryHateSpeech,\n\t\t\tThreshold: genai.HarmBlockNone,\n\t\t},\n\t\t{\n\t\t\tCategory:  genai.HarmCategoryDangerousContent,\n\t\t\tThreshold: genai.HarmBlockNone,\n\t\t},\n\t\t{\n\t\t\tCategory:  genai.HarmCategorySexuallyExplicit,\n\t\t\tThreshold: genai.HarmBlockNone,\n\t\t},\n\t}\n\n\tscriptData, err := os.ReadFile(\"script.txt\")\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\tscriptMimeType := http.DetectContentType(scriptData)\n\n\t// 위키 파일 로드\n\twikiData, err := os.ReadFile(\"nino_wiki.pdf\")\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\twikiMimeType := http.DetectContentType(wikiData)\n\n\tcs := model.StartChat()\n\n\tChatHistory = []*genai.Content{\n\t\t{\n\t\t\tParts: []genai.Part{\n\t\t\t\tgenai.Blob{\n\t\t\t\t\tMIMEType: scriptMimeType,\n\t\t\t\t\tData:     scriptData,\n\t\t\t\t},\n\t\t\t\tgenai.Text(\"니노의 말투입니다.\"),\n\t\t\t\tgenai.Blob{\n\t\t\t\t\tMIMEType: wikiMimeType,\n\t\t\t\t\tData:     wikiData,\n\t\t\t\t},\n\t\t\t\tgenai.Text(\"니노의 정보입니다.\"),\n\t\t\t},\n\t\t\tRole: \"model\",\n\t\t},\n\t}\n\n\tsession := &GeminiChatSession{\n\t\tChatSession: cs,\n\t}\n\treturn session\n}\n\nfunc (cs *GeminiChatSession) ChatWithNino(ctx context.Context, text string) genai.Part {\n\tcs.ChatSession.History = ChatHistory\n\n\tresp, err := cs.ChatSession.SendMessage(ctx, genai.Text(text))\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\n\tvar content genai.Part\n\tfor _, cand := range resp.Candidates {\n\t\tif cand.Content != nil {\n\t\t\tfor _, part := range cand.Content.Parts {\n\t\t\t\tcontent = part\n\t\t\t}\n\t\t}\n\t}\n\n\tChatHistory = append(ChatHistory, &genai.Content{\n\t\tParts: []genai.Part{\n\t\t\tgenai.Text(text),\n\t\t},\n\t\tRole: \"user\",\n\t})\n\tChatHistory = append(ChatHistory, &genai.Content{\n\t\tParts: []genai.Part{\n\t\t\tcontent,\n\t\t},\n\t\tRole: \"model\",\n\t})\n\n\treturn content\n}\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/chatbot/gemini.go b/chatbot/gemini.go
+--- a/chatbot/gemini.go	(revision 3b942e1b8798c56e56c690706c829752474148c7)
++++ b/chatbot/gemini.go	(date 1743325701032)
+@@ -2,11 +2,15 @@
+ 
+ import (
+ 	"context"
++	"fmt"
++	"io"
+ 	"log"
+ 	"net/http"
+ 	"os"
++	"strings"
+ 
+ 	"github.com/google/generative-ai-go/genai"
++	"google.golang.org/api/iterator"
+ 	"google.golang.org/api/option"
+ )
+ 
+@@ -89,35 +93,50 @@
+ 	return session
+ }
+ 
+-func (cs *GeminiChatSession) ChatWithNino(ctx context.Context, text string) genai.Part {
++func (cs *GeminiChatSession) ChatWithNino(ctx context.Context, text string, writer io.Writer, flusher http.Flusher) error {
+ 	cs.ChatSession.History = ChatHistory
+ 
+-	resp, err := cs.ChatSession.SendMessage(ctx, genai.Text(text))
+-	if err != nil {
+-		log.Fatal(err)
+-	}
++	iter := cs.ChatSession.SendMessageStream(ctx, genai.Text(text))
++	var accumulatedResponse strings.Builder
++
++	for {
++		resp, err := iter.Next()
++		if err == iterator.Done {
++			break
++		}
++		if err != nil {
++			log.Printf("Streaming error: %v\n", err)
++			return fmt.Errorf("스트리밍 중 오류 발생: %w", err)
++		}
+ 
+-	var content genai.Part
+-	for _, cand := range resp.Candidates {
+-		if cand.Content != nil {
+-			for _, part := range cand.Content.Parts {
+-				content = part
++		if resp != nil && len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
++			for _, part := range resp.Candidates[0].Content.Parts {
++				if textPart, ok := part.(genai.Text); ok {
++					chunkText := string(textPart)
++					accumulatedResponse.WriteString(chunkText)
++
++					fmt.Fprintf(writer, "data: %s\n\n", chunkText)
++					flusher.Flush()
++				}
+ 			}
+ 		}
+ 	}
+ 
+-	ChatHistory = append(ChatHistory, &genai.Content{
+-		Parts: []genai.Part{
+-			genai.Text(text),
+-		},
+-		Role: "user",
+-	})
+-	ChatHistory = append(ChatHistory, &genai.Content{
+-		Parts: []genai.Part{
+-			content,
+-		},
+-		Role: "model",
+-	})
++	fullResponseText := accumulatedResponse.String()
++	if fullResponseText != "" {
++		ChatHistory = append(ChatHistory, &genai.Content{
++			Parts: []genai.Part{
++				genai.Text(text),
++			},
++			Role: "user",
++		})
++		ChatHistory = append(ChatHistory, &genai.Content{
++			Parts: []genai.Part{
++				genai.Text(fullResponseText),
++			},
++			Role: "model",
++		})
++	}
+ 
+-	return content
++	return nil
+ }
+Index: README.md
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># Go언어와 LLM으로 시작하는 가상연애 도전기\n\n# 사용 프레임워크\n```gomod\ngithub.com/gin-gonic/gin v1.10.0\ngithub.com/google/generative-ai-go v0.19.0\ngithub.com/joho/godotenv v1.5.1\n```
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/README.md b/README.md
+--- a/README.md	(revision 3b942e1b8798c56e56c690706c829752474148c7)
++++ b/README.md	(date 1743323138815)
+@@ -5,4 +5,10 @@
+ github.com/gin-gonic/gin v1.10.0
+ github.com/google/generative-ai-go v0.19.0
+ github.com/joho/godotenv v1.5.1
++```
++
++# env
++```dotenv
++GEMINI_API_KEY="YOUT_API_KEY"
++GEMINI_INSTRUCTIONS="YOUR_INSTRUCTIONS"
+ ```
+\ No newline at end of file
+Index: chatbot/main.go
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package main\n\nimport (\n\t\"github.com/gin-contrib/cors\"\n\t\"github.com/gin-gonic/gin\"\n\t\"github.com/joho/godotenv\"\n\t\"log\"\n\t\"net/http\"\n\t\"time\"\n)\n\ntype msgStruct struct {\n\tMessage string `json:\"message\"`\n}\n\nfunc main() {\n\tr := gin.Default()\n\n\tif err := godotenv.Load(); err != nil {\n\t\tlog.Fatalf(\"Error loading .env file\")\n\t}\n\n\tr.Use(cors.New(cors.Config{\n\t\tAllowOrigins: []string{\"*\"},\n\t\tAllowMethods: []string{\"GET\", \"POST\", \"PUT\", \"PATCH\", \"DELETE\"},\n\t\tAllowHeaders: []string{\"Origin\", \"Content-Type\"},\n\t\tMaxAge:       24 * time.Hour,\n\t}))\n\n\tcs := NewGeminiClient()\n\n\tr.POST(\"/chat\", func(c *gin.Context) {\n\t\tvar msg msgStruct\n\t\terr := c.ShouldBindJSON(&msg)\n\t\tif err != nil {\n\t\t\tc.JSON(http.StatusBadRequest, gin.H{\"error\": err.Error()})\n\t\t\treturn\n\t\t}\n\n\t\tresp := cs.ChatWithNino(c, msg.Message)\n\t\tc.JSON(http.StatusOK, gin.H{\n\t\t\t\"message\": resp,\n\t\t})\n\t})\n\n\tr.Run(\":8080\")\n}\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/chatbot/main.go b/chatbot/main.go
+--- a/chatbot/main.go	(revision 3b942e1b8798c56e56c690706c829752474148c7)
++++ b/chatbot/main.go	(date 1743325932938)
+@@ -1,12 +1,14 @@
+ package main
+ 
+ import (
++	"fmt"
++	"log"
++	"net/http"
++	"time"
++
+ 	"github.com/gin-contrib/cors"
+ 	"github.com/gin-gonic/gin"
+ 	"github.com/joho/godotenv"
+-	"log"
+-	"net/http"
+-	"time"
+ )
+ 
+ type msgStruct struct {
+@@ -29,18 +31,53 @@
+ 
+ 	cs := NewGeminiClient()
+ 
++	// 루트 경로 ("/")에 대한 GET 요청 핸들러 추가
++	r.GET("/", func(c *gin.Context) {
++		// 현재 디렉토리에 있는 "index.html" 파일을 클라이언트에게 전송합니다.
++		// index.html 파일이 다른 경로에 있다면 해당 경로로 수정해야 합니다. (예: "./static/index.html")
++		c.File("./index.html")
++	})
++
+ 	r.POST("/chat", func(c *gin.Context) {
+ 		var msg msgStruct
+-		err := c.ShouldBindJSON(&msg)
+-		if err != nil {
++		if err := c.ShouldBindJSON(&msg); err != nil {
+ 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+ 			return
+ 		}
+ 
+-		resp := cs.ChatWithNino(c, msg.Message)
+-		c.JSON(http.StatusOK, gin.H{
+-			"message": resp,
+-		})
++		// SSE를 위한 헤더 설정
++		c.Writer.Header().Set("Content-Type", "text/event-stream")
++		c.Writer.Header().Set("Cache-Control", "no-cache")
++		c.Writer.Header().Set("Connection", "keep-alive")
++		c.Writer.Header().Set("Transfer-Encoding", "chunked")
++
++		// http.ResponseWriter가 http.Flusher를 지원하는지 확인
++		flusher, ok := c.Writer.(http.Flusher)
++		if !ok {
++			log.Println("Streaming unsupported!") // 에러 대신 로그 출력 및 종료
++			c.JSON(http.StatusInternalServerError, gin.H{"error": "Streaming unsupported!"})
++			return
++		}
++
++		// 스트리밍 시작 전에 헤더를 전송
++		c.Writer.WriteHeader(http.StatusOK)
++		flusher.Flush() // 헤더 즉시 전송
++
++		// 수정된 ChatWithNino 호출 (c.Writer와 flusher 전달)
++		err := cs.ChatWithNino(c.Request.Context(), msg.Message, c.Writer, flusher)
++		if err != nil {
++			// 스트리밍 중 오류 발생 시 클라이언트에게 알림 (이미 헤더는 전송됨)
++			// 오류 메시지를 SSE 이벤트로 보낼 수도 있습니다.
++			log.Printf("Error during streaming: %v", err)
++			// 이미 응답 스트림이 시작되었으므로 c.JSON을 사용할 수 없습니다.
++			// 클라이언트는 스트림 종료 또는 오류 이벤트를 통해 문제를 인지해야 합니다.
++			// 예시: 오류 이벤트 전송
++			fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", err.Error())
++			flusher.Flush()
++		}
++
++		// 스트리밍이 완료되면 Gin 핸들러는 여기서 종료됩니다.
++		// c.JSON과 같은 응답 전송 코드는 제거합니다.
+ 	})
+ 
+ 	r.Run(":8080")
+Index: .idea/workspace.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<project version=\"4\">\n  <component name=\"AutoImportSettings\">\n    <option name=\"autoReloadType\" value=\"ALL\" />\n  </component>\n  <component name=\"ChangeListManager\">\n    <list default=\"true\" id=\"641a60d3-e136-44fe-9d9a-f7899c72a7b2\" name=\"Changes\" comment=\"\">\n      <change afterPath=\"$PROJECT_DIR$/chatbot/README.md\" afterDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/.idea/workspace.xml\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/.idea/workspace.xml\" afterDir=\"false\" />\n      <change beforePath=\"$PROJECT_DIR$/chatbot/gemini.go\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/chatbot/gemini.go\" afterDir=\"false\" />\n    </list>\n    <option name=\"SHOW_DIALOG\" value=\"false\" />\n    <option name=\"HIGHLIGHT_CONFLICTS\" value=\"true\" />\n    <option name=\"HIGHLIGHT_NON_ACTIVE_CHANGELIST\" value=\"false\" />\n    <option name=\"LAST_RESOLUTION\" value=\"IGNORE\" />\n  </component>\n  <component name=\"FileTemplateManagerImpl\">\n    <option name=\"RECENT_TEMPLATES\">\n      <list>\n        <option value=\"Go File\" />\n      </list>\n    </option>\n  </component>\n  <component name=\"GOROOT\" url=\"file:///opt/homebrew/opt/go/libexec\" />\n  <component name=\"Git.Settings\">\n    <option name=\"RECENT_GIT_ROOT_PATH\" value=\"$PROJECT_DIR$\" />\n    <option name=\"RESET_MODE\" value=\"HARD\" />\n  </component>\n  <component name=\"ProjectColorInfo\">{\n  &quot;associatedIndex&quot;: 8\n}</component>\n  <component name=\"ProjectId\" id=\"2uwmSaULBEqC4IIyOnKWxC3LK30\" />\n  <component name=\"ProjectLevelVcsManager\">\n    <ConfirmationsSetting value=\"2\" id=\"Add\" />\n  </component>\n  <component name=\"ProjectViewState\">\n    <option name=\"hideEmptyMiddlePackages\" value=\"true\" />\n    <option name=\"showLibraryContents\" value=\"true\" />\n  </component>\n  <component name=\"PropertiesComponent\"><![CDATA[{\n  \"keyToString\": {\n    \"DefaultGoTemplateProperty\": \"Go File\",\n    \"RunOnceActivity.ShowReadmeOnStart\": \"true\",\n    \"RunOnceActivity.git.unshallow\": \"true\",\n    \"RunOnceActivity.go.formatter.settings.were.checked\": \"true\",\n    \"RunOnceActivity.go.migrated.go.modules.settings\": \"true\",\n    \"RunOnceActivity.go.modules.go.list.on.any.changes.was.set\": \"true\",\n    \"git-widget-placeholder\": \"main\",\n    \"go.import.settings.migrated\": \"true\",\n    \"go.sdk.automatically.set\": \"true\",\n    \"last_opened_file_path\": \"/Users/hyunseojung/Documents/github/HWAII\",\n    \"node.js.detected.package.eslint\": \"true\",\n    \"node.js.selected.package.eslint\": \"(autodetect)\",\n    \"nodejs_package_manager_path\": \"npm\"\n  }\n}]]></component>\n  <component name=\"RecentsManager\">\n    <key name=\"MoveFile.RECENT_KEYS\">\n      <recent name=\"$PROJECT_DIR$/chatbot\" />\n      <recent name=\"$PROJECT_DIR$\" />\n      <recent name=\"$PROJECT_DIR$/script/files\" />\n    </key>\n  </component>\n  <component name=\"SharedIndexes\">\n    <attachedChunks>\n      <set>\n        <option value=\"bundled-gosdk-d297c17c1fbd-57c114c3cede-org.jetbrains.plugins.go.sharedIndexes.bundled-GO-243.26053.20\" />\n        <option value=\"bundled-js-predefined-d6986cc7102b-1632447f56bf-JavaScript-GO-243.26053.20\" />\n      </set>\n    </attachedChunks>\n  </component>\n  <component name=\"SpellCheckerSettings\" RuntimeDictionaries=\"0\" Folders=\"0\" CustomDictionaries=\"0\" DefaultDictionary=\"application-level\" UseSingleDictionary=\"true\" transferred=\"true\" />\n  <component name=\"TypeScriptGeneratedFilesManager\">\n    <option name=\"version\" value=\"3\" />\n  </component>\n  <component name=\"Vcs.Log.Tabs.Properties\">\n    <option name=\"TAB_STATES\">\n      <map>\n        <entry key=\"MAIN\">\n          <value>\n            <State />\n          </value>\n        </entry>\n      </map>\n    </option>\n  </component>\n  <component name=\"VgoProject\">\n    <settings-migrated>true</settings-migrated>\n  </component>\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/workspace.xml b/.idea/workspace.xml
+--- a/.idea/workspace.xml	(revision 3b942e1b8798c56e56c690706c829752474148c7)
++++ b/.idea/workspace.xml	(date 1743325853157)
+@@ -5,9 +5,10 @@
+   </component>
+   <component name="ChangeListManager">
+     <list default="true" id="641a60d3-e136-44fe-9d9a-f7899c72a7b2" name="Changes" comment="">
+-      <change afterPath="$PROJECT_DIR$/chatbot/README.md" afterDir="false" />
+       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+       <change beforePath="$PROJECT_DIR$/chatbot/gemini.go" beforeDir="false" afterPath="$PROJECT_DIR$/chatbot/gemini.go" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/chatbot/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/chatbot/main.go" afterDir="false" />
+     </list>
+     <option name="SHOW_DIALOG" value="false" />
+     <option name="HIGHLIGHT_CONFLICTS" value="true" />
+@@ -56,8 +57,8 @@
+ }]]></component>
+   <component name="RecentsManager">
+     <key name="MoveFile.RECENT_KEYS">
+-      <recent name="$PROJECT_DIR$/chatbot" />
+       <recent name="$PROJECT_DIR$" />
++      <recent name="$PROJECT_DIR$/chatbot" />
+       <recent name="$PROJECT_DIR$/script/files" />
+     </key>
+   </component>

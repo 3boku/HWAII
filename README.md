@@ -6,3 +6,9 @@ github.com/gin-gonic/gin v1.10.0
 github.com/google/generative-ai-go v0.19.0
 github.com/joho/godotenv v1.5.1
 ```
+
+# .env
+```dotenv
+GEMINI_API_KEY="YOUR_API_KEY"
+GEMINI_INSTRUCTIONS="YOUR_INSTRUCTIONS"
+```
