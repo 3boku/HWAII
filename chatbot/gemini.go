@@ -2,16 +2,19 @@ package main
 
 import (
 	"context"
-	"github.com/google/generative-ai-go/genai"
-	"google.golang.org/api/option"
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/api/option"
 )
 
 type GeminiChatSession struct {
 	ChatSession *genai.ChatSession
 }
+
+var ChatHistory []*genai.Content
 
 func NewGeminiClient() *GeminiChatSession {
 	apiKey := os.Getenv("GEMINI_API_KEY")
@@ -62,7 +65,7 @@ func NewGeminiClient() *GeminiChatSession {
 
 	cs := model.StartChat()
 
-	cs.History = []*genai.Content{
+	ChatHistory = []*genai.Content{
 		{
 			Parts: []genai.Part{
 				genai.Blob{
@@ -87,6 +90,8 @@ func NewGeminiClient() *GeminiChatSession {
 }
 
 func (cs *GeminiChatSession) ChatWithNino(ctx context.Context, text string) genai.Part {
+	cs.ChatSession.History = ChatHistory
+
 	resp, err := cs.ChatSession.SendMessage(ctx, genai.Text(text))
 	if err != nil {
 		log.Fatal(err)
@@ -100,6 +105,19 @@ func (cs *GeminiChatSession) ChatWithNino(ctx context.Context, text string) gena
 			}
 		}
 	}
+
+	ChatHistory = append(ChatHistory, &genai.Content{
+		Parts: []genai.Part{
+			genai.Text(text),
+		},
+		Role: "user",
+	})
+	ChatHistory = append(ChatHistory, &genai.Content{
+		Parts: []genai.Part{
+			content,
+		},
+		Role: "model",
+	})
 
 	return content
 }
