@@ -2,12 +2,11 @@ package main
 
 import (
 	"context"
+	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
 	"log"
 	"net/http"
 	"os"
-
-	"github.com/google/generative-ai-go/genai"
 )
 
 type GeminiChatSession struct {
