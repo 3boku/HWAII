@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>음성 텍스트 변환</title>
+</head>
+<body>
+<button id="recordButton">녹음 시작</button>
+<button id="stopButton" disabled>녹음 중지</button>
+<div id="result"></div>
+
+<script>
+    const recordButton = document.getElementById('recordButton');
+    const stopButton = document.getElementById('stopButton');
+    const resultDiv = document.getElementById('result');
+    let mediaRecorder;
+    let audioChunks = [];
+
+    recordButton.addEventListener('click', async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'audio/webm',
+                audioBitsPerSecond: 16000
+            });
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = event => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstart = () => {
+                recordButton.disabled = true;
+                stopButton.disabled = false;
+                resultDiv.innerText = '녹음 중...';
+            };
+
+            mediaRecorder.onstop = async () => {
+                recordButton.disabled = false;
+                stopButton.disabled = true;
+                resultDiv.innerText = '텍스트 변환 중...';
+
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                
+                console.log('오디오 블롭 크기:', audioBlob.size, '바이트');
+                
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'audio.wav');
+
+                try {
+                    const response = await fetch('/transcribe', { // Go 백엔드 API 엔드포인트
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    resultDiv.innerText = `변환 결과: ${data.transcript}`;
+
+                } catch (error) {
+                    console.error('오디오 전송 및 변환 오류:', error);
+                    resultDiv.innerText = `오류 발생: ${error.message}`;
+                }
+            };
+
+            mediaRecorder.start();
+        } catch (err) {
+            console.error('마이크 접근 오류:', err);
+            resultDiv.innerText = '마이크 접근이 거부되었습니다.';
+        }
+    });
+
+    stopButton.addEventListener('click', () => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        }
+    });
+</script>
+</body>
+</html>
