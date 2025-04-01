@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>니노 챗봇</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f7f7f7;
+            margin: 0;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        #chat-container {
+            width: 100%;
+            max-width: 700px; /* 너비 조정 */
+            height: 85vh; /* 높이 조정 */
+            background-color: #fff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); /* 그림자 효과 */
+            display: flex;
+            flex-direction: column;
+            border-radius: 12px; /* 둥근 모서리 */
+            overflow: hidden;
+        }
+        #chat-box {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 25px; /* 패딩 증가 */
+            border-bottom: 1px solid #e0e0e0; /* 경계선 색상 변경 */
+            scroll-behavior: smooth; /* 부드러운 스크롤 */
+        }
+        .message {
+            margin-bottom: 18px; /* 메시지 간격 조정 */
+            line-height: 1.5; /* 줄 간격 조정 */
+            max-width: 85%; /* 메시지 최대 너비 */
+            word-wrap: break-word; /* 긴 단어 줄바꿈 */
+            padding: 10px 15px; /* 메시지 패딩 */
+            border-radius: 18px; /* 메시지 둥근 모서리 */
+        }
+        .user-message {
+            background-color: #007bff; /* 사용자 메시지 배경색 */
+            color: white;
+            margin-left: auto; /* 오른쪽 정렬 */
+            border-bottom-right-radius: 5px; /* 뾰족한 느낌 */
+        }
+        .user-message strong {
+             /* 이미 배경색으로 구분되므로 강조 제거 */
+            display: none;
+        }
+        .bot-message {
+            background-color: #e9ecef; /* 봇 메시지 배경색 */
+            color: #333;
+            margin-right: auto; /* 왼쪽 정렬 */
+            border-bottom-left-radius: 5px; /* 뾰족한 느낌 */
+        }
+        .bot-message strong {
+            color: #555; /* 봇 이름 색상 */
+            margin-right: 5px;
+        }
+        #input-area {
+            display: flex;
+            padding: 15px;
+            background-color: #f8f9fa; /* 입력 영역 배경색 */
+            border-top: 1px solid #e0e0e0;
+        }
+        #message-input {
+            flex-grow: 1;
+            padding: 12px 15px; /* 입력 필드 패딩 */
+            border: 1px solid #ccc;
+            border-radius: 20px; /* 둥근 입력 필드 */
+            margin-right: 10px;
+            font-size: 1rem;
+        }
+        #voice-button, #send-button {
+            padding: 12px 20px; /* 버튼 패딩 */
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 20px; /* 둥근 버튼 */
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.2s ease-in-out;
+        }
+        #voice-button {
+            background-color: #28a745; /* 녹음 버튼 색상 */
+            margin-right: 10px;
+        }
+        #voice-button:hover {
+            background-color: #218838;
+        }
+        #voice-button.recording {
+            background-color: #dc3545; /* 녹음 중 색상 */
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        #send-button:hover {
+            background-color: #0056b3;
+        }
+        /* 로딩 스피너 (선택 사항) */
+        .loading-spinner {
+            display: inline-block;
+            width: 1em;
+            height: 1em;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spinner-border .75s linear infinite;
+            vertical-align: text-bottom;
+            margin-left: 5px;
+        }
+        @keyframes spinner-border {
+          to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="chat-container">
+        <div id="chat-box">
+        </div>
+        <div id="input-area">
+            <button id="voice-button"><i class="fa fa-microphone"></i> 음성</button>
+            <input type="text" id="message-input" placeholder="니노에게 메시지 보내기..." autocomplete="off">
+            <button id="send-button">전송</button>
+        </div>
+    </div>
+
+    <script>
+        const chatBox = document.getElementById('chat-box');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const voiceButton = document.getElementById('voice-button');
+
+        // 현재 응답을 받고 있는 봇 메시지 요소를 추적하기 위한 변수
+        let currentBotMessageElement = null;
+        // SSE 메시지 청크를 임시 저장하는 버퍼
+        let sseBuffer = '';
+        
+        // 음성 녹음 변수
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+
+        // 전송 버튼 클릭 이벤트 리스너
+        sendButton.addEventListener('click', sendTextMessage);
+        
+        // 음성 버튼 클릭 이벤트 리스너
+        voiceButton.addEventListener('click', toggleRecording);
+        
+        // 입력 필드에서 Enter 키 입력 이벤트 리스너
+        messageInput.addEventListener('keypress', (e) => {
+            // Shift+Enter는 줄바꿈으로 동작하도록 허용하고, Enter만 눌렀을 때 전송
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); // 기본 Enter 동작(줄바꿈 등) 방지
+                sendTextMessage();
+            }
+        });
+
+        // 음성 녹음 토글 함수
+        async function toggleRecording() {
+            if (!isRecording) {
+                // 녹음 시작
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream, {
+                        mimeType: 'audio/webm;codecs=opus',
+                        audioBitsPerSecond: 48000
+                    });
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = event => {
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);
+                        }
+                    };
+
+                    mediaRecorder.onstart = () => {
+                        isRecording = true;
+                        voiceButton.classList.add('recording');
+                        voiceButton.textContent = '녹음 중...';
+                    };
+
+                    mediaRecorder.onstop = async () => {
+                        isRecording = false;
+                        voiceButton.classList.remove('recording');
+                        voiceButton.textContent = '음성';
+                        
+                        if (audioChunks.length > 0) {
+                            // 녹음된 오디오 블롭 생성
+                            const audioBlob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
+                            
+                            await sendVoiceMessage(audioBlob);
+                        }
+                    };
+
+                    mediaRecorder.start();
+                } catch (err) {
+                    console.error('마이크 접근 오류:', err);
+                    appendMessage('bot', `오류: 마이크 접근이 거부되었습니다. (${err.message})`);
+                }
+            } else {
+                // 녹음 중지
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                    // 스트림 트랙 중지
+                    mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                }
+            }
+        }
+
+        // 음성 메시지 전송 함수
+        async function sendVoiceMessage(audioBlob) {
+            try {
+                // 음성 메시지 표시
+                const userMessageElement = appendMessage('user', '(음성 메시지)');
+                
+                // 봇 응답 로딩 표시
+                currentBotMessageElement = appendMessage('bot', '<span class="loading-spinner"></span>');
+                
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'audio.webm');
+
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorText = response.statusText || '서버 연결 실패';
+                    let errorDetail = errorText;
+                    try {
+                        const errorData = await response.json();
+                        errorDetail = errorData.error || errorText;
+                    } catch (e) { /* 응답이 JSON이 아니면 무시 */ }
+
+                    console.error('음성 메시지 전송 오류:', response.status, errorDetail);
+                    updateBotMessageElement(`오류: ${errorDetail}`);
+                    return;
+                }
+
+                const data = await response.json();
+                
+                // 음성 인식된 텍스트로 사용자 메시지 업데이트
+                if (data.transcript) {
+                    userMessageElement.innerHTML = `<strong></strong> ${data.transcript}`;
+                }
+                
+                // 봇 응답 표시
+                updateBotMessageElement(data.message);
+                
+            } catch (error) {
+                console.error('음성 메시지 전송 오류:', error);
+                updateBotMessageElement(`오류: ${error.message}`);
+            }
+        }
+        
+        // 사용자의 "(음성 메시지)"를 실제 음성 인식 텍스트로 업데이트하는 함수
+        function updateUserMessageWithTranscript(transcript) {
+            // 가장 최근 사용자 메시지를 찾음 (음성 메시지 표시기)
+            const userMessages = document.querySelectorAll('.user-message');
+            const lastUserMessage = userMessages[userMessages.length - 1];
+            
+            if (lastUserMessage && lastUserMessage.textContent.includes('(음성 메시지)')) {
+                lastUserMessage.innerHTML = `<strong></strong> ${transcript}`;
+            }
+        }
+
+        // 텍스트 메시지 전송 함수
+        async function sendTextMessage() {
+            const message = messageInput.value.trim();
+            // 메시지가 비어있으면 아무것도 하지 않음
+            if (!message) return;
+
+            // 사용자 메시지를 채팅창에 표시
+            appendMessage('user', message);
+            // 입력 필드 비우기
+            messageInput.value = '';
+            // 봇 응답을 표시할 자리 표시자(placeholder) 생성 및 추적 시작
+            // 로딩 스피너 추가
+            currentBotMessageElement = appendMessage('bot', '<span class="loading-spinner"></span>');
+            // 실제 텍스트 내용을 저장할 데이터 속성 추가
+            currentBotMessageElement.dataset.fullText = '';
+
+            try {
+                // 백엔드의 /chat 엔드포인트로 POST 요청 전송
+                const response = await fetch('/chat', { // 백엔드 주소 확인
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    // 메시지를 JSON 형식으로 body에 담아 전송
+                    body: JSON.stringify({ message: message }),
+                });
+
+                // HTTP 응답 상태가 정상이 아니거나 응답 본문이 없는 경우 에러 처리
+                if (!response.ok) {
+                    const errorText = response.statusText || '서버 연결 실패';
+                    let errorDetail = errorText;
+                    try {
+                         // 백엔드에서 JSON 형식의 에러 메시지를 보냈을 경우 파싱 시도
+                         const errorData = await response.json();
+                         errorDetail = errorData.error || errorText;
+                    } catch (e) { /* 응답이 JSON이 아니면 무시 */ }
+
+                    console.error('메시지 전송 오류:', response.status, errorDetail);
+                    // 봇 메시지 자리 표시자에 에러 메시지 표시
+                    updateBotMessageElement(`오류: ${errorDetail}`);
+                    return; // 에러 발생 시 함수 종료
+                }
+
+                // 응답이 스트림이 아닌 경우 (일반 JSON 응답)
+                const data = await response.json();
+                updateBotMessageElement(data.message);
+
+            } catch (error) {
+                // fetch 또는 처리 중 네트워크 오류 등 발생 시 처리
+                console.error('메시지 처리 오류:', error);
+                // 봇 메시지 자리 표시자에 에러 메시지 표시
+                updateBotMessageElement(`오류: ${error.message}`);
+            } finally {
+                // 처리 완료 또는 오류 발생 후 정리 작업
+                // 로딩 스피너 제거 (에러가 아닐 경우)
+                if (currentBotMessageElement && !currentBotMessageElement.textContent.startsWith('오류:')) {
+                    const spinner = currentBotMessageElement.querySelector('.loading-spinner');
+                    if (spinner) spinner.remove();
+                }
+                // 현재 봇 메시지 요소 추적 종료
+                currentBotMessageElement = null;
+            }
+        }
+
+        // 채팅창에 메시지를 추가하는 함수
+        function appendMessage(sender, htmlContent) { // text 대신 htmlContent 받도록 수정
+            const messageElement = document.createElement('div');
+            // 메시지 종류(user/bot)에 따라 클래스 추가
+            messageElement.classList.add('message', `${sender}-message`);
+
+            // 메시지 내용 설정 (HTML 허용)
+            messageElement.innerHTML = `<strong>${sender === 'user' ? '' : 'Nino:'}</strong> ${htmlContent}`; // 사용자 이름은 숨김
+
+            // 채팅창에 새 메시지 요소 추가
+            chatBox.appendChild(messageElement);
+            // 채팅창을 맨 아래로 스크롤
+            chatBox.scrollTop = chatBox.scrollHeight;
+            // 추가된 메시지 요소 반환 (봇 메시지 업데이트 시 사용)
+            return messageElement;
+        }
+
+        // 현재 봇 메시지 내용을 업데이트하는 함수
+        function updateBotMessageElement(newText) {
+            if (currentBotMessageElement) {
+                 // 로딩 스피너 제거 (업데이트 시)
+                 const spinner = currentBotMessageElement.querySelector('.loading-spinner');
+                 if (spinner) spinner.remove();
+
+                 // <strong> 태그와 텍스트 내용 업데이트
+                 currentBotMessageElement.innerHTML = `<strong>Nino:</strong> ${newText}`;
+
+                 // 채팅창 스크롤 유지
+                 chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        }
+    </script>
+</body>
+</html>
