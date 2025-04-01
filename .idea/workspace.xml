@@ -4,7 +4,13 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="641a60d3-e136-44fe-9d9a-f7899c72a7b2" name="Changes" comment="" />
+    <list default="true" id="641a60d3-e136-44fe-9d9a-f7899c72a7b2" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/speech/main.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/speech/public/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chatbot/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/chatbot/go.mod" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chatbot/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/chatbot/go.sum" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -52,6 +58,7 @@
 }</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/speech/public" />
       <recent name="$PROJECT_DIR$/chatbot" />
       <recent name="$PROJECT_DIR$" />
       <recent name="$PROJECT_DIR$/script/files" />
