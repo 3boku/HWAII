@@ -5,11 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="641a60d3-e136-44fe-9d9a-f7899c72a7b2" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/speech/main.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/speech/public/index.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tts/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/chatbot/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/chatbot/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/chatbot/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/chatbot/go.sum" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -50,14 +47,18 @@
     &quot;git-widget-placeholder&quot;: &quot;main&quot;,
     &quot;go.import.settings.migrated&quot;: &quot;true&quot;,
     &quot;go.sdk.automatically.set&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/Users/hyunseojung/Documents/github/HWAII&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/hyunseojung/Documents/github/HWAII/talk-to-nino&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
     &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;
   }
 }</component>
   <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/talk-to-nino" />
+    </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/talk-to-nino/templates" />
       <recent name="$PROJECT_DIR$/speech/public" />
       <recent name="$PROJECT_DIR$/chatbot" />
       <recent name="$PROJECT_DIR$" />
