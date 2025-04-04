@@ -57,6 +57,18 @@
             color: #333;
             margin-right: auto; /* 왼쪽 정렬 */
             border-bottom-left-radius: 5px; /* 뾰족한 느낌 */
+            display: flex; /* 이미지와 텍스트를 함께 배치하기 위한 설정 */
+            align-items: flex-start; /* 상단 정렬 */
+        }
+        .bot-profile-img {
+            width: 30px; /* 이미지 크기 */
+            height: 30px;
+            border-radius: 50%; /* 원형 이미지 */
+            margin-right: 8px; /* 이미지와 텍스트 사이 간격 */
+            object-fit: cover; /* 이미지 비율 유지 */
+        }
+        .bot-message-content {
+            flex: 1; /* 나머지 공간 차지 */
         }
         .bot-message strong {
             color: #555; /* 봇 이름 색상 */
@@ -138,6 +150,8 @@
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
         const voiceButton = document.getElementById('voice-button');
+
+        const ninoImagePath = "/templates/image.png";
 
         // 현재 응답을 받고 있는 봇 메시지 요소를 추적하기 위한 변수
         let currentBotMessageElement = null;
@@ -343,8 +357,19 @@
             // 메시지 종류(user/bot)에 따라 클래스 추가
             messageElement.classList.add('message', `${sender}-message`);
 
-            // 메시지 내용 설정 (HTML 허용)
-            messageElement.innerHTML = `<strong>${sender === 'user' ? '' : 'Nino:'}</strong> ${htmlContent}`; // 사용자 이름은 숨김
+            // 봇 메시지인 경우 이미지와 함께 표시
+            if (sender === 'bot') {
+                // 이미지와 텍스트를 포함하는 구조로 변경
+                messageElement.innerHTML = `
+                    <img src="${ninoImagePath}" alt="Nino" class="bot-profile-img">
+                    <div class="bot-message-content">
+                        <strong>Nino:</strong> ${htmlContent}
+                    </div>
+                `;
+            } else {
+                // 사용자 메시지는 그대로 유지
+                messageElement.innerHTML = `<strong>${sender === 'user' ? '' : 'Nino:'}</strong> ${htmlContent}`;
+            }
 
             // 채팅창에 새 메시지 요소 추가
             chatBox.appendChild(messageElement);
@@ -357,15 +382,26 @@
         // 현재 봇 메시지 내용을 업데이트하는 함수
         function updateBotMessageElement(newText) {
             if (currentBotMessageElement) {
-                 // 로딩 스피너 제거 (업데이트 시)
-                 const spinner = currentBotMessageElement.querySelector('.loading-spinner');
-                 if (spinner) spinner.remove();
+                // 로딩 스피너 제거 (업데이트 시)
+                const spinner = currentBotMessageElement.querySelector('.loading-spinner');
+                if (spinner) spinner.remove();
 
-                 // <strong> 태그와 텍스트 내용 업데이트
-                 currentBotMessageElement.innerHTML = `<strong>Nino:</strong> ${newText}`;
+                // 메시지 내용 업데이트 (이미지는 유지)
+                const contentDiv = currentBotMessageElement.querySelector('.bot-message-content');
+                if (contentDiv) {
+                    contentDiv.innerHTML = `<strong>Nino:</strong> ${newText}`;
+                } else {
+                    // 이전 구조인 경우 새 구조로 업데이트
+                    currentBotMessageElement.innerHTML = `
+                        <img src="${ninoImagePath}" alt="Nino" class="bot-profile-img">
+                        <div class="bot-message-content">
+                            <strong>Nino:</strong> ${newText}
+                        </div>
+                    `;
+                }
 
-                 // 채팅창 스크롤 유지
-                 chatBox.scrollTop = chatBox.scrollHeight;
+                // 채팅창 스크롤 유지
+                chatBox.scrollTop = chatBox.scrollHeight;
             }
         }
     </script>

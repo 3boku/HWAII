@@ -30,9 +30,10 @@ func main() {
 		MaxAge:       24 * time.Hour,
 	}))
 
-	// 정적 파일 서빙 설정
-	r.Static("/static", "./static")
-	r.LoadHTMLGlob("templates/*")
+	r.LoadHTMLGlob("templates/*.html")
+
+	// 정적 파일 제공 경로 추가
+	r.Static("/templates", "./templates")
 
 	// 루트 경로에 index.html 제공
 	r.GET("/", func(c *gin.Context) {
